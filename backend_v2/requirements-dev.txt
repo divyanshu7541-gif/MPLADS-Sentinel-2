@@ -1,0 +1,5 @@
+-r requirements.txt
+pytest==8.3.3
+httpx==0.28.1  # >=0.28.1 required by google-genai (Phase 11); 0.27.2 made the dev install unresolvable
+ruff==0.7.2
+hypothesis==6.112.2

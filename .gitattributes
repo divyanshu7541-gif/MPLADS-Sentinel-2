@@ -1,0 +1,16 @@
+# Text is stored with LF line endings in the repository, so Linux CI (bash
+# scripts, Dockerfiles, YAML) always checks out LF regardless of where a file
+# was edited.
+* text=auto eol=lf
+*.sh text eol=lf
+*.bat text eol=crlf
+
+# Source data is committed byte-for-byte: the ingest records each raw file's
+# sha256 and row count, so no line-ending conversion may touch it.
+data/raw/** -text
+
+*.png binary
+*.jpg binary
+*.ico binary
+*.parquet binary
+*.geojson -text

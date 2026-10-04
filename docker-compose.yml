@@ -1,0 +1,139 @@
+# Dev/staging stack. Phase 12 cutover: the frontend now talks to backend_v2.
+#
+# The `frontend` service serves frontend/ UNMODIFIED with `network_mode: host`,
+# so frontend/vite.config.js's hardcoded dev-server proxy target
+# (`http://localhost:8000`) resolves to the host machine. Since Phase 12 the
+# `api` service (backend_v2) is published on host port 8000, so that proxy
+# reaches the NEW backend -- the cutover needs no frontend source change.
+# (Before Phase 12 the api was on 8001 and :8000 was the old backend, run by
+# hand; the old backend is archived at archive/backend_v1/ and must not be
+# started on :8000 alongside this stack.) If your Docker setup doesn't
+# support host networking (Docker Desktop: Settings > Resources > Network),
+# run the frontend the normal way instead: `cd frontend && npm install &&
+# npm run dev` -- its proxy hits the same localhost:8000.
+#
+# The api serves the published analysis run from Postgres. A fresh
+# `postgres` volume is empty: run the pipeline once (docs/phase12_report.md,
+# "Bringing up the stack") -- every data endpoint answers 503 until then.
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: sentinel
+      POSTGRES_PASSWORD: sentinel
+      POSTGRES_DB: sentinel
+    ports:
+      - "5433:5432"
+    volumes:
+      - sentinel_v2_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U sentinel -d sentinel"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  api:
+    build: ./backend_v2
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000
+    # The real published run (run 44) lives in the `sentinel-p5c-pg`
+    # container's volume, published on host port 5447 -- the same database
+    # ops/deploy/deploy.env points the deploy stack at. The `postgres`
+    # service below is a separate, empty volume (migrations at the
+    # baseline `0001`, no tables), so pointing the api at it made every
+    # data endpoint fail with `relation "published_run" does not exist`,
+    # which app/api/params.py:guarded() turns into the 503 the landing
+    # page reported as "Live figures failed to load". Start that holder
+    # with `docker start sentinel-p5c-pg` (docs/deployment.md §1), and
+    # override DATABASE_URL on the command line if you move it.
+    # To build a fresh database here instead, leave this as
+    # postgres:5432 and run the pipeline (docs/phase12_report.md §8).
+    environment:
+      DATABASE_URL: ${DATABASE_URL:-postgresql+psycopg://sentinel:sentinel@host.docker.internal:5447/sentinel}
+      WARM_CACHE: "true"  # precompute summary/analytics/data-health at startup
+      # One long-lived process: keep the 5 + 10 pool (the code default, 2 + 0, is for Vercel).
+      DB_POOL_SIZE: "5"
+      DB_MAX_OVERFLOW: "10"
+      # Phase 13: set JWT_SECRET (>= 32 chars) from your secret store for any
+      # non-development deployment; unset here = random per-process dev key.
+      JWT_SECRET: ${JWT_SECRET:-}
+      ANONYMOUS_READ: ${ANONYMOUS_READ:-true}
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000,http://localhost:4173}
+    ports:
+      - "8000:8000"  # Phase 12 cutover: the frontend proxy's target (was 8001)
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/health', timeout=3)"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  worker:
+    build: ./backend_v2
+    command: python -m worker.main
+    environment:
+      # Same served database as `api` (see the comment there).
+      DATABASE_URL: ${DATABASE_URL:-postgresql+psycopg://sentinel:sentinel@host.docker.internal:5447/sentinel}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import pathlib,sys,time; p=pathlib.Path('/tmp/worker_heartbeat'); sys.exit(0 if p.exists() and time.time()-float(p.read_text())<30 else 1)"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+
+  # Phase 13 (BLUEPRINT.md §11): scheduled database backups -- a daily
+  # pg_dump (custom format) to the sentinel_v2_backups volume, each checked
+  # readable, newest 14 kept. The executed restore test is
+  # ops/backup/restore_test.sh (report: docs/restore_test_report.md).
+  # Backs up the same database `api` serves (host port 5447 by default;
+  # see the comment on `api`), so the dump contains the real run.
+  backup:
+    image: postgres:16
+    command: ["sh", "/ops/backup.sh"]
+    environment:
+      PGHOST: ${BACKUP_PGHOST:-host.docker.internal}
+      PGPORT: ${BACKUP_PGPORT:-"5447"}
+      PGUSER: sentinel
+      PGPASSWORD: sentinel  # dev stack only; production passes it from a secret store
+      PGDATABASE: sentinel
+      BACKUP_DIR: /backups
+      BACKUP_INTERVAL_SECONDS: "86400"
+      BACKUP_KEEP: "14"
+    volumes:
+      - ./ops/backup:/ops:ro
+      - sentinel_v2_backups:/backups
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  frontend:
+    image: node:20-alpine
+    working_dir: /app
+    volumes:
+      - ./frontend:/app
+      # node_modules gets its own volume, layered over the bind mount above,
+      # so `npm install` never writes container (Linux) binaries into the
+      # host's frontend/node_modules -- that directory is host-platform
+      # (e.g. Windows) native and must stay untouched per the Phase 0 brief
+      # ("MUST NOT CHANGE anything under frontend/"). Without this, the
+      # first `docker compose up` silently corrupts the host's local
+      # `npm run dev` setup.
+      - sentinel_v2_frontend_node_modules:/app/node_modules
+    command: sh -c "npm install && npm run dev -- --host 0.0.0.0 --port 3000"
+    network_mode: host
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3000"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+volumes:
+  sentinel_v2_pgdata:
+  sentinel_v2_backups:
+  sentinel_v2_frontend_node_modules:

@@ -1,0 +1,194 @@
+{
+  "run_id": 44,
+  "cutoff": "2026-08-30",
+  "split": "2025-03-01",
+  "bootstrap_replicates": 200,
+  "bootstrap_seed": 20260929,
+  "a1": {
+    "train_n": 16541,
+    "test_n": 80965,
+    "test_events": 30779,
+    "c_index": 0.5534,
+    "c_index_type_median_baseline": 0.5601,
+    "c_index_ci95": [
+      0.5502,
+      0.5569
+    ],
+    "chance": 0.5,
+    "unseen_groups_test_n": 12048,
+    "c_index_unseen_groups": 0.5817,
+    "covariates": [
+      "log_sanction_amount",
+      "is_rs",
+      "type_32",
+      "type_62",
+      "type_113",
+      "type_17",
+      "type_85",
+      "type_59",
+      "type_58",
+      "type_16",
+      "type_34",
+      "type_6"
+    ],
+    "types": [
+      32,
+      62,
+      113,
+      17,
+      85,
+      59,
+      58,
+      16,
+      34,
+      6
+    ]
+  },
+  "a2": {
+    "day90": {
+      "train_n": 14238,
+      "test_n": 23195,
+      "test_prevalence": 0.4981,
+      "brier": 0.2527,
+      "brier_ci95": [
+        0.251,
+        0.2541
+      ],
+      "brier_base_rate": 0.25,
+      "brier_type_rate_baseline": 0.2479,
+      "brier_minus_base_ci95": [
+        0.001,
+        0.0042
+      ],
+      "auc": 0.5381,
+      "auc_ci95": [
+        0.5307,
+        0.5459
+      ],
+      "unseen_groups": {
+        "n": 2628,
+        "brier": 0.2684,
+        "brier_base_rate": 0.2442,
+        "auc": 0.4506
+      }
+    },
+    "day180": {
+      "train_n": 11608,
+      "test_n": 18471,
+      "test_prevalence": 0.6255,
+      "brier": 0.2352,
+      "brier_ci95": [
+        0.233,
+        0.2373
+      ],
+      "brier_base_rate": 0.2343,
+      "brier_type_rate_baseline": 0.2374,
+      "brier_minus_base_ci95": [
+        -0.0005,
+        0.0022
+      ],
+      "auc": 0.5443,
+      "auc_ci95": [
+        0.5364,
+        0.5526
+      ],
+      "unseen_groups": {
+        "n": 2539,
+        "brier": 0.2391,
+        "brier_base_rate": 0.2195,
+        "auc": 0.4435
+      }
+    }
+  },
+  "split_overlap": {
+    "mp": {
+      "train_groups": 415,
+      "test_groups": 711,
+      "in_both": 414,
+      "test_works_whose_group_is_in_train": 51947,
+      "test_works": 80965
+    },
+    "district_authority_id": {
+      "train_groups": 525,
+      "test_groups": 763,
+      "in_both": 519,
+      "test_works_whose_group_is_in_train": 65277,
+      "test_works": 80965
+    },
+    "activity_type_id": {
+      "train_groups": 93,
+      "test_groups": 113,
+      "in_both": 91,
+      "test_works_whose_group_is_in_train": 80635,
+      "test_works": 80965
+    }
+  },
+  "b4": {
+    "robust_mahalanobis": {
+      "eligible_refit": 76710,
+      "eligible_stored": 76710,
+      "eligibility_identical": true,
+      "max_abs_score_diff": 0.0,
+      "params": {
+        "support_fraction": null,
+        "random_state": 20260926,
+        "features": "['log_amount', 'log_peer_deviation_ratio', 'days_rec_to_sanction', 'days_sanction_to_end_or_age', 'payment_count', 'description_length']"
+      },
+      "spearman_vs_cost_anomaly": 0.2882,
+      "n_orthogonality": 76710
+    },
+    "isolation_forest": {
+      "eligible_refit": 76710,
+      "eligible_stored": 76710,
+      "eligibility_identical": true,
+      "max_abs_score_diff": 0.0,
+      "params": {
+        "n_estimators": 200,
+        "max_samples": "auto",
+        "contamination": "auto",
+        "random_state": 20260926,
+        "features": "['log_amount', 'log_peer_deviation_ratio', 'days_rec_to_sanction', 'days_sanction_to_end_or_age', 'payment_count', 'distinct_payee_count', 'description_length']"
+      },
+      "spearman_vs_cost_anomaly": 0.2864,
+      "n_orthogonality": 76710
+    }
+  },
+  "registry": [
+    {
+      "id": 3,
+      "run_id": 1,
+      "model": "b4_atypicality_robust_mahalanobis",
+      "status": "active",
+      "missing_fields": []
+    },
+    {
+      "id": 4,
+      "run_id": 1,
+      "model": "b4_atypicality_isolation_forest",
+      "status": "active",
+      "missing_fields": []
+    },
+    {
+      "id": 5,
+      "run_id": 1,
+      "model": "a1_cox_completion_time",
+      "status": "inactive_experiment",
+      "missing_fields": []
+    },
+    {
+      "id": 6,
+      "run_id": 44,
+      "model": "b4_atypicality_robust_mahalanobis",
+      "status": "active",
+      "missing_fields": []
+    },
+    {
+      "id": 7,
+      "run_id": 44,
+      "model": "b4_atypicality_isolation_forest",
+      "status": "active",
+      "missing_fields": []
+    }
+  ],
+  "risk_result_md5": "c4d589e0e0fc40621d4e011a64a7233d"
+}

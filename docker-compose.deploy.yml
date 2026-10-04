@@ -1,0 +1,86 @@
+# Phase 14 deployment stack for the backend (docs/deployment.md).
+#
+#   FRONTEND -> Vercel (static build of frontend/, not part of this file)
+#   BACKEND  -> `api`: backend_v2 on ONE uvicorn worker (the rate limiter is
+#               in-process), reached only through the Cloudflare quick tunnel
+#   WORKER   -> `worker`: persistent worker process
+#   DATABASE -> PostgreSQL holding published run 44 (DATABASE_URL; the demo path
+#               uses the existing local run-44 database on host port 5447)
+#   HTTPS    -> `cloudflared`: Cloudflare QUICK tunnel (https://<random>.trycloudflare.com)
+#               -> http://api:8000. No Cloudflare account or DNS needed; the URL
+#               changes whenever this container restarts (docs/deployment.md,
+#               "After a restart"). Cloudflare terminates TLS; the API publishes
+#               NO host port.
+#
+#   docker build -t sentinel-deploy-api backend_v2
+#   docker compose -f docker-compose.deploy.yml --env-file ops/deploy/deploy.env up -d
+#
+# ops/deploy/deploy.env is git-ignored (*.env rule) and holds the secrets
+# (JWT_SECRET, DATABASE_URL, later GEMINI_API_KEY); template:
+# ops/deploy/deploy.env.example.
+
+name: sentinel-deploy
+
+networks:
+  edge:
+    ipam:
+      config:
+        - subnet: 172.30.14.0/24  # fixed, so TRUSTED_PROXIES can name cloudflared exactly
+
+services:
+  api:
+    build: ./backend_v2
+    image: sentinel-deploy-api
+    # One worker: rate-limit windows live in process memory (docs/security.md).
+    # --no-proxy-headers: uvicorn must not rewrite the client address itself;
+    # app/auth/ratelimit.py trusts forwarded headers only from TRUSTED_PROXIES.
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 1 --no-proxy-headers
+    environment:
+      APP_ENV: production
+      DATABASE_URL: ${DATABASE_URL:?set DATABASE_URL in ops/deploy/deploy.env}
+      JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET (>= 32 chars) in ops/deploy/deploy.env}
+      ANONYMOUS_READ: ${ANONYMOUS_READ:-true}
+      CORS_ORIGINS: ${CORS_ORIGINS:?set the exact Vercel origin(s)}
+      CORS_ORIGIN_REGEX: ""
+      TRUSTED_PROXIES: 172.30.14.10
+      WARM_CACHE: "true"
+      # One long-lived process: keep the 5 + 10 pool (the code default, 2 + 0, is for Vercel).
+      DB_POOL_SIZE: "5"
+      DB_MAX_OVERFLOW: "10"
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    networks:
+      edge:
+        ipv4_address: 172.30.14.20
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/health', timeout=3)"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 60s
+
+  worker:
+    build: ./backend_v2
+    image: sentinel-deploy-api
+    command: python -m worker.main
+    environment:
+      APP_ENV: production
+      DATABASE_URL: ${DATABASE_URL:?set DATABASE_URL}
+      JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    networks: [edge]
+    restart: unless-stopped
+
+  cloudflared:
+    image: cloudflare/cloudflared:2024.8.3
+    command: tunnel --no-autoupdate --url http://api:8000
+    networks:
+      edge:
+        ipv4_address: 172.30.14.10
+    depends_on:
+      api:
+        condition: service_healthy
+    restart: unless-stopped

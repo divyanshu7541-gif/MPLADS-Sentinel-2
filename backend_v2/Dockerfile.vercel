@@ -1,0 +1,19 @@
+FROM python:3.12-slim
+
+WORKDIR /srv
+
+# This image only runs as the Vercel backend service. Pin production mode so
+# startup refuses to run without a real JWT_SECRET and DATABASE_URL (both set
+# in the Vercel project's environment, never here). See DEPLOY_NOTES.md.
+ENV APP_ENV=production
+# Vercel's proxy has no fixed address for TRUSTED_PROXIES; trust the client IP
+# it forwards (right-most X-Forwarded-For) for rate limiting. Only safe because
+# this image is never reachable except through Vercel.
+ENV TRUST_PROXY_HEADERS=1
+
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+COPY . .
+
+CMD ["sh", "-c", "uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-80}"]

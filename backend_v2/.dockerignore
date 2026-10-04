@@ -1,0 +1,14 @@
+__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+tests/
+.venv/
+
+# Secrets: every .env file at every depth (Docker matches a bare `.env` only at
+# the build-context root, so the ** forms are required). The Dockerfile's
+# `COPY . .` must never carry one into an image.
+.env
+.env.*
+**/.env
+**/.env.*

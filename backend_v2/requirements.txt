@@ -1,0 +1,17 @@
+fastapi==0.115.12
+uvicorn[standard]==0.32.0
+pydantic==2.9.2
+pydantic-settings==2.6.1
+sqlalchemy==2.0.36
+alembic==1.13.3
+psycopg[binary]==3.2.10
+pandas==2.2.3
+pandera==0.20.4
+pyshp==2.3.1
+scikit-learn==1.5.2  # Phase 4 near-duplicate signal: char n-gram TF-IDF cosine (BLUEPRINT.md §6/§7 B1)
+
+lifelines==0.29.0  # Phase 7 A1 survival (Kaplan-Meier, Cox PH, concordance index)
+shapely==2.0.6  # Phase 9: representative points inside licensed polygons, geometry simplification
+pyarrow==21.0.0  # Phase 9: read the LGD districts GeoParquet
+google-genai==1.20.0  # Phase 11: optional Gemini layer for the chatbot; graceful fallback if unset/missing
+PyJWT==2.9.0  # Phase 13: signed short-lived access tokens (HS256 JWT, OIDC-compatible claims)

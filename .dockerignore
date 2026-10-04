@@ -1,0 +1,9 @@
+# Repository-root build context (no Dockerfile builds from here today; this
+# guards any future one). Secrets: every .env file at every depth.
+.env
+.env.*
+**/.env
+**/.env.*
+**/node_modules/
+data/
+archive/
