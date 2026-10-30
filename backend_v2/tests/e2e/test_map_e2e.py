@@ -791,7 +791,8 @@ def _selected_seat_in_view(page):
     return page.evaluate(
         """() => {
             const box = document.querySelector('[data-testid=map-canvas]').getBoundingClientRect();
-            const sel = [...document.querySelectorAll('path.map-area')].filter(p => p.getAttribute('stroke-width') === '3');
+            const sel = [...document.querySelectorAll('path.map-area')]
+                .filter(p => p.getAttribute('stroke-width') === '3');
             return sel.length === 1 && (() => {
                 const r = sel[0].getBoundingClientRect();
                 return r.width > 0 && r.left >= box.left - 2 && r.right <= box.right + 2
@@ -814,7 +815,11 @@ def test_search_pick_of_a_constituency_flies_to_it_selects_it_and_loads_its_work
     page.wait_for_timeout(1200)  # the 0.8 s fly
     assert constituency in page.get_by_test_id("map-selected-chip").inner_text()
     assert _zoom(page) > start
-    calls = [parse_qs(urlparse(u).query) for u in page.api_calls[n:] if urlparse(u).path.endswith("/map-works")]
+    calls = [
+        parse_qs(urlparse(u).query)
+        for u in page.api_calls[n:]
+        if urlparse(u).path.endswith('/map-works')
+    ]
     assert any(q.get("constituency") == [constituency] and q.get("state") == [state] for q in calls), calls
     assert page.get_by_test_id("map-works-button").is_visible()
     assert _selected_seat_in_view(page)
@@ -826,7 +831,11 @@ def test_search_pick_of_a_lok_sabha_mp_goes_to_their_seat(page, base):
     target = None
     for r in rows:
         for name in [m.strip() for m in (r.get("mps") or "").split(",") if m.strip()]:
-            prof = page.evaluate("n => fetch('/api/mp-performance/' + encodeURIComponent(n)).then(r => r.json())", name)
+            prof = page.evaluate(
+                "n => fetch('/api/mp-performance/' + encodeURIComponent(n))"
+                ".then(r => r.json())",
+                name,
+            )
             if prof.get("house") == "LS" and prof.get("constituency") == r["Constituency"]:
                 target = (name, r["State"], r["Constituency"])
                 break
@@ -848,7 +857,11 @@ def test_search_pick_of_a_rajya_sabha_member_zooms_to_the_state_without_markers(
     names = sorted({w["mp"] for w in works if w.get("mp")})
     member = None
     for name in names:
-        prof = page.evaluate("n => fetch('/api/mp-performance/' + encodeURIComponent(n)).then(r => r.json())", name)
+        prof = page.evaluate(
+            "n => fetch('/api/mp-performance/' + encodeURIComponent(n))"
+            ".then(r => r.json())",
+            name,
+        )
         if prof.get("house") == "RS":
             member = (name, prof["state"])
             break
@@ -952,7 +965,10 @@ def test_seat_layers_are_restyled_not_rebuilt(page, base):
     """A metric change or a selection restyles the existing seat paths (and
     keeps their status classes current); it never rebuilds them."""
     _open_map(page, base)
-    page.evaluate("() => document.querySelectorAll('path.map-area').forEach((p, i) => { p.dataset.probe = i; })")
+    page.evaluate(
+        "() => document.querySelectorAll('path.map-area').forEach((p, i) => { "
+        "p.dataset.probe = i; })"
+    )
     n = page.locator("path.map-area").count()
     page.locator('[data-metric="average_risk"]').click()
     page.wait_for_timeout(500)
@@ -961,7 +977,8 @@ def test_seat_layers_are_restyled_not_rebuilt(page, base):
     assert page.locator("path.map-area").count() == n
     assert page.locator("path.map-area[data-probe]").count() == n  # the same elements
     statuses = page.evaluate(
-        "() => [...document.querySelectorAll('path.map-area')].map(p => [...p.classList].filter(c => /^map-area-/.test(c)))"
+        "() => [...document.querySelectorAll('path.map-area')]"
+        ".map(p => [...p.classList].filter(c => /^map-area-/.test(c)))"
     )
     assert all(len(c) == 1 for c in statuses), statuses  # exactly one status class each
     assert page.locator("path.map-area[stroke-width='3']").count() == 1  # the selection
@@ -1109,7 +1126,10 @@ def test_khadoor_sahib_is_drawn_as_a_no_works_seat(page, base):
     assert seat is not None, "no seat tooltip names Khadoor Sahib"
     tip = page.locator(".leaflet-tooltip").inner_text()
     assert "Punjab" in tip and "No works recorded" in tip
-    assert seat.get_attribute("fill").lower() == STATUS_FILL["none"] and seat.get_attribute("stroke-dasharray")
+    assert (
+        seat.get_attribute("fill").lower() == STATUS_FILL["none"]
+        and seat.get_attribute("stroke-dasharray")
+    )
     seat.click(force=True)
     popup = page.locator(".leaflet-popup-content")
     popup.wait_for(state="visible")

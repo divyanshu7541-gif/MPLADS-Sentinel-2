@@ -36,13 +36,21 @@ def _script():
 
 def _max_decimals(coords) -> int:
     if isinstance(coords[0], (int, float)):
-        return max(len(repr(float(c)).split(".")[1].rstrip("0")) if "." in repr(float(c)) else 0 for c in coords)
+    return max(
+        len(repr(float(c)).split(".")[1].rstrip("0"))
+        if "." in repr(float(c))
+        else 0
+        for c in coords
+    )
     return max(_max_decimals(c) for c in coords)
 
 
 def _static():
     if not STATIC_FILE.exists():
-        pytest.skip("frontend/public/geo/india-outlines.json is not generated yet (scripts/build_static_outlines.py)")
+        pytest.skip(
+            "frontend/public/geo/india-outlines.json is not generated yet "
+            "(scripts/build_static_outlines.py)"
+        )
     return json.loads(STATIC_FILE.read_bytes())
 
 

@@ -19,7 +19,10 @@ the API's. Which of them the Map draws is decided by the coverage data.
 Run once in the existing backend image, with the database not started
 (one line; PowerShell or bash, from the repo root):
 
-  docker compose run --rm --no-deps -v "${PWD}/backend_v2:/srv" -v "${PWD}/frontend/public/geo:/out" api python scripts/build_static_outlines.py --out /out/india-outlines.json
+  docker compose run --rm --no-deps \
+    -v "${PWD}/backend_v2:/srv" \
+    -v "${PWD}/frontend/public/geo:/out" \
+    api python scripts/build_static_outlines.py --out /out/india-outlines.json
 
 Writes only --out, and only when the gzipped file is at most --max-gzip-kb
 (150). Prints point counts, raw and gzip sizes, the marker-point check and
@@ -81,7 +84,12 @@ def build(
             {
                 "type": "Feature",
                 "geometry": boundaries.simplified(national, boundaries.NATIONAL_SIMPLIFY_DEG, decimals),
-                "properties": {"kind": "national_outline", "name": "India", "source": NATIONAL_SOURCE, **common},
+                "properties": {
+                    "kind": "national_outline",
+                    "name": "India",
+                    "source": NATIONAL_SOURCE,
+                    **common,
+                },
             }
         )
     for state, key in sorted(redelimited.items()):

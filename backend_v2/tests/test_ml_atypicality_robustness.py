@@ -58,7 +58,7 @@ def _score_quietly(X: pd.DataFrame):
         warnings.simplefilter("ignore")
         try:
             return atypicality.score(X), None
-        except (ValueError, np.linalg.LinAlgError) as e:  # LinAlgError subclasses ValueError; listed for clarity
+        except (ValueError, np.linalg.LinAlgError) as e:  # LinAlgError subclasses ValueError
             return None, e
 
 

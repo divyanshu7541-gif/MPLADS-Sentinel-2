@@ -70,12 +70,17 @@ def test_file_has_the_api_seat_properties_and_no_metric():
         assert p["dataset_state"] not in boundaries.REDELIMITED
         assert f["geometry"]["type"] in ("Polygon", "MultiPolygon")
     assert fc["features"][0]["properties"]["dataset_constituency"] == "KHADOOR SAHIB"
-    assert {s["area_key"] for s in fc["metadata"]["seats"]} == {f["properties"]["area_key"] for f in fc["features"]}
+    assert {s["area_key"] for s in fc["metadata"]["seats"]} == {
+        f["properties"]["area_key"] for f in fc["features"]
+    }
 
 
 def test_frontend_version_matches_the_file():
     fc = _static()
-    assert f"UNSERVED_SEATS_VERSION = '{fc['metadata']['content_sha256']}'" in API_JS.read_text(encoding="utf-8")
+    assert (
+        f"UNSERVED_SEATS_VERSION = '{fc['metadata']['content_sha256']}'"
+        in API_JS.read_text(encoding="utf-8")
+    )
 
 
 def test_file_is_the_source_feature_copied_verbatim():

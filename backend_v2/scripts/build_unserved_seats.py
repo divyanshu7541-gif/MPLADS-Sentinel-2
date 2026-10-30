@@ -128,7 +128,8 @@ def main() -> int:
         p = f["properties"]
         print(
             f"  {p['area_key']}  {p['dataset_state']} | {p['dataset_constituency']}  "
-            f"({p['source_pc_name']}, {f['geometry']['type']}, {_points(f['geometry']['coordinates'])} points)"
+            f"({p['source_pc_name']}, {f['geometry']['type']}, "
+            f"{_points(f['geometry']['coordinates'])} points)"
         )
     body = json.dumps(fc, separators=(",", ":")).encode()
     print(f"features: {len(fc['features'])}")
