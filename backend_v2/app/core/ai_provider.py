@@ -1,25 +1,11 @@
 """
-Centralised access to DigitalOcean Serverless Inference (Google Gemma 4).
+Centralised access to Google Gemma 4 through OpenAI-compatible inference APIs.
 
-Every AI feature goes through this module so that credentials, timeouts,
-error handling and secret-safe logging are defined in exactly one place.
+DigitalOcean Serverless Inference is preferred when configured. If its key
+is absent, OpenRouter can serve the free Gemma 4 model for development and
+hackathon demonstrations. Credentials remain server-side.
 
-Configuration (all optional; without a key the AI features degrade to a
-deterministic, non-AI path):
-  DO_INFERENCE_API_KEY   DigitalOcean model access key (never logged in full,
-                         never sent to the frontend, never committed)
-  DO_GEMMA_MODEL         model id, default "gemma-4-31B-it"
-  DO_INFERENCE_BASE_URL  OpenAI-compatible base URL. DigitalOcean's is
-                         "https://inference.do-ai.run/v1" (include /v1: the
-                         OpenAI SDK appends "/chat/completions").
-  DO_INFERENCE_TIMEOUT   request timeout in seconds, default 30
-
-The provider is deliberately generic: `generate_text` returns plain text.
-This application does not rely on structured-output support; callers that
-need a fixed shape validate the returned text themselves.
-
-No function here reads or writes a risk score. Gemma is a presentation and
-explanation layer over stored evidence, never part of the scoring engine.
+Gemma only explains stored evidence. It never reads or writes risk scores.
 """
 
 from __future__ import annotations
@@ -33,7 +19,9 @@ log = logging.getLogger("sentinel.ai")
 
 DEFAULT_BASE_URL = "https://inference.do-ai.run/v1"
 DEFAULT_MODEL = "gemma-4-31B-it"
-DEFAULT_TIMEOUT_SECONDS = 30.0
+OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
+OPENROUTER_MODEL = "google/gemma-4-31b-it:free"
+DEFAULT_TIMEOUT_SECONDS = 45.0
 
 
 class ProviderNotConfigured(RuntimeError):
@@ -41,24 +29,58 @@ class ProviderNotConfigured(RuntimeError):
 
 
 class ProviderTimeout(RuntimeError):
-    """DigitalOcean did not answer within the configured timeout."""
+    """The inference provider did not answer within the configured timeout."""
 
 
 class ProviderError(RuntimeError):
     """The provider answered with an error or an unusable response."""
 
 
+def get_provider() -> str | None:
+    """Prefer DigitalOcean; use OpenRouter only when the DO key is absent."""
+    if get_setting("DO_INFERENCE_API_KEY", "").strip():
+        return "digitalocean"
+    if get_setting("OPENROUTER_API_KEY", "").strip():
+        return "openrouter"
+    return None
+
+
 def get_api_key() -> str:
-    return get_setting("DO_INFERENCE_API_KEY", "")
+    provider = get_provider()
+    if provider == "digitalocean":
+        return get_setting("DO_INFERENCE_API_KEY", "").strip()
+    if provider == "openrouter":
+        return get_setting("OPENROUTER_API_KEY", "").strip()
+    return ""
 
 
 def get_model() -> str:
-    return get_setting("DO_GEMMA_MODEL", DEFAULT_MODEL).strip() or DEFAULT_MODEL
+    if get_provider() == "openrouter":
+        value = get_setting("OPENROUTER_GEMMA_MODEL", OPENROUTER_MODEL)
+        return value.strip() or OPENROUTER_MODEL
+    value = get_setting("DO_GEMMA_MODEL", DEFAULT_MODEL)
+    return value.strip() or DEFAULT_MODEL
 
 
 def get_base_url() -> str:
-    value = get_setting("DO_INFERENCE_BASE_URL", DEFAULT_BASE_URL).strip()
-    return (value or DEFAULT_BASE_URL).rstrip("/")
+    if get_provider() == "openrouter":
+        value = get_setting("OPENROUTER_BASE_URL", OPENROUTER_BASE_URL)
+        return (value.strip() or OPENROUTER_BASE_URL).rstrip("/")
+    value = get_setting("DO_INFERENCE_BASE_URL", DEFAULT_BASE_URL)
+    return (value.strip() or DEFAULT_BASE_URL).rstrip("/")
+
+
+def get_attribution() -> str:
+    provider = get_provider()
+    if provider == "digitalocean":
+        return "Powered by Google Gemma 4 · DigitalOcean Serverless Inference"
+    if provider == "openrouter":
+        return "Powered by Google Gemma 4 · OpenRouter (free model)"
+    return "Google Gemma 4 · Inference provider not configured"
+
+
+def is_configured() -> bool:
+    return bool(get_api_key())
 
 
 def get_timeout_seconds() -> float:
@@ -70,10 +92,6 @@ def get_timeout_seconds() -> float:
     return min(120.0, max(5.0, value))
 
 
-def is_configured() -> bool:
-    return bool(get_api_key())
-
-
 def _safe_message(exc: Exception, api_key: str) -> str:
     """An exception summary that can never contain the key itself."""
     message = f"{type(exc).__name__}: {exc}"
@@ -82,10 +100,8 @@ def _safe_message(exc: Exception, api_key: str) -> str:
     return message[:500]
 
 
-@lru_cache(maxsize=4)
+@lru_cache(maxsize=8)
 def _get_client(api_key: str, base_url: str, timeout: float):
-    # Imported lazily: the AI layer is optional, and importing the SDK must
-    # never be a startup requirement for the rest of the API.
     from openai import OpenAI
 
     return OpenAI(
@@ -104,17 +120,14 @@ def generate_text(
     temperature: float = 0.2,
     max_completion_tokens: int = 1200,
 ) -> str:
-    """Generate plain text from Gemma 4 via DigitalOcean.
+    """Generate plain text from the configured Gemma 4 inference provider.
 
-    `history` is an optional list of {"role": "user"|"assistant",
-    "content": "..."} turns inserted before `user_prompt`.
-    Raises ProviderNotConfigured, ProviderTimeout or ProviderError; callers
-    decide what fallback or HTTP status to present. The API key is never
-    included in an exception message or log line.
+    History is an optional list of user/assistant turns inserted before the
+    current prompt. Provider exceptions never include a raw API key.
     """
     api_key = get_api_key()
     if not api_key:
-        raise ProviderNotConfigured("DO_INFERENCE_API_KEY is not set")
+        raise ProviderNotConfigured("No Gemma inference API key is configured")
     try:
         from openai import (
             APIConnectionError,
@@ -156,37 +169,73 @@ def generate_text(
             max_completion_tokens=max_completion_tokens,
         )
     except APITimeoutError as exc:
-        log.warning("AI request timed out (key %s, model %s)", mask_key(api_key), get_model())
+        log.warning("AI request timed out (provider %s, model %s)", get_provider(), get_model())
         raise ProviderTimeout("AI request timed out") from exc
     except AuthenticationError as exc:
-        log.warning("AI authentication failed (key %s): %s", mask_key(api_key), _safe_message(exc, api_key))
+        log.warning(
+            "AI authentication failed (provider %s, key %s): %s",
+            get_provider(),
+            mask_key(api_key),
+            _safe_message(exc, api_key),
+        )
         raise ProviderError("AI provider rejected the credentials") from exc
     except PermissionDeniedError as exc:
-        log.warning("AI permission denied (key %s): %s", mask_key(api_key), _safe_message(exc, api_key))
+        log.warning(
+            "AI permission denied (provider %s, key %s): %s",
+            get_provider(),
+            mask_key(api_key),
+            _safe_message(exc, api_key),
+        )
         raise ProviderError("AI provider denied access to the model") from exc
     except NotFoundError as exc:
-        log.warning("AI model not found (model %s): %s", get_model(), _safe_message(exc, api_key))
+        log.warning(
+            "AI model not found (provider %s, model %s): %s",
+            get_provider(),
+            get_model(),
+            _safe_message(exc, api_key),
+        )
         raise ProviderError("AI model is not available") from exc
     except RateLimitError as exc:
-        log.warning("AI rate limit reached (key %s): %s", mask_key(api_key), _safe_message(exc, api_key))
+        log.warning(
+            "AI rate limit reached (provider %s, key %s): %s",
+            get_provider(),
+            mask_key(api_key),
+            _safe_message(exc, api_key),
+        )
         raise ProviderError("AI provider rate limit reached") from exc
     except BadRequestError as exc:
-        log.warning("AI request rejected (model %s): %s", get_model(), _safe_message(exc, api_key))
+        log.warning(
+            "AI request rejected (provider %s, model %s): %s",
+            get_provider(),
+            get_model(),
+            _safe_message(exc, api_key),
+        )
         raise ProviderError("AI provider rejected the request") from exc
     except APIConnectionError as exc:
-        log.warning("AI connection failed (key %s): %s", mask_key(api_key), _safe_message(exc, api_key))
+        log.warning(
+            "AI connection failed (provider %s, key %s): %s",
+            get_provider(),
+            mask_key(api_key),
+            _safe_message(exc, api_key),
+        )
         raise ProviderError("AI provider could not be reached") from exc
     except APIStatusError as exc:
         status = getattr(exc, "status_code", "?")
         log.warning(
-            "AI provider error %s (key %s): %s",
+            "AI provider error %s (provider %s, key %s): %s",
             status,
+            get_provider(),
             mask_key(api_key),
             _safe_message(exc, api_key),
         )
         raise ProviderError(f"AI provider error {status}") from exc
-    except Exception as exc:  # any SDK-level failure, never a broken request
-        log.warning("AI call failed (key %s): %s", mask_key(api_key), _safe_message(exc, api_key))
+    except Exception as exc:
+        log.warning(
+            "AI call failed (provider %s, key %s): %s",
+            get_provider(),
+            mask_key(api_key),
+            _safe_message(exc, api_key),
+        )
         raise ProviderError("AI provider call failed") from exc
 
     try:
