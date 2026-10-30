@@ -610,7 +610,7 @@ export default {
   'rec.copilot.timeout': 'The brief service timed out. The stored risk assessment is unchanged; please try again.',
   'rec.copilot.validation': 'The assistant returned a brief that failed validation. The stored risk assessment is unchanged.',
   'rec.copilot.generated': 'Generated {time}',
-  'rec.copilot.attribution': 'Powered by Google Gemma 4 · DigitalOcean Inference',
+  'rec.copilot.attribution': 'Google Gemma 4 · Server-side inference',
   'rec.history': 'Risk History',
   'rec.activeSignals': 'Active Signals',
   'rec.glance': 'At a Glance',
