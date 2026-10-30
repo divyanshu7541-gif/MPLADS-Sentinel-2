@@ -134,6 +134,28 @@ def test_parse_brief_rejects_an_accusation():
 # ---- provider configuration / failure mapping -----------------------------------------------------
 
 
+def test_digitalocean_is_preferred_when_both_provider_keys_are_set(monkeypatch):
+    values = {
+        "DO_INFERENCE_API_KEY": "do-test-key",
+        "OPENROUTER_API_KEY": "or-test-key",
+    }
+    monkeypatch.setattr(ai_provider, "get_setting", lambda name, default="": values.get(name, default))
+    assert ai_provider.get_provider() == "digitalocean"
+    assert ai_provider.get_api_key() == "do-test-key"
+    assert ai_provider.get_model() == "gemma-4-31B-it"
+    assert "DigitalOcean" in ai_provider.get_attribution()
+
+
+def test_openrouter_free_gemma_is_selected_without_a_digitalocean_key(monkeypatch):
+    values = {"OPENROUTER_API_KEY": "or-test-key"}
+    monkeypatch.setattr(ai_provider, "get_setting", lambda name, default="": values.get(name, default))
+    assert ai_provider.get_provider() == "openrouter"
+    assert ai_provider.get_api_key() == "or-test-key"
+    assert ai_provider.get_model() == "google/gemma-4-31b-it:free"
+    assert ai_provider.get_base_url() == "https://openrouter.ai/api/v1"
+    assert "OpenRouter" in ai_provider.get_attribution()
+
+
 def test_provider_reports_missing_key(monkeypatch):
     monkeypatch.setattr(ai_provider, "get_api_key", lambda: "")
     with pytest.raises(ai_provider.ProviderNotConfigured):
