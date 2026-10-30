@@ -3,6 +3,13 @@ name: CI
 on:
   push:
   pull_request:
+  workflow_dispatch:
+    inputs:
+      run_full_data_pipeline:
+        description: 'Run the complete data rebuild (requires raw MPLADS portal snapshots in data/raw/)'
+        required: false
+        default: false
+        type: boolean
 
 jobs:
   # Phase 13: the ENTIRE accumulated regression suite (Phases 0-13) runs in
@@ -11,6 +18,7 @@ jobs:
   # claims discipline, audit sample), the executed backup/restore test, and
   # the House-toggle browser e2e against the real-data API (inside pytest).
   regression:
+    if: github.event_name == 'workflow_dispatch' && inputs.run_full_data_pipeline
     name: full regression suite, Phases 0-13 (one job)
     runs-on: ubuntu-latest
     timeout-minutes: 150
@@ -208,6 +216,35 @@ jobs:
             ci-artifacts/restore-test/*.log
             ci-artifacts/restore-test/*.json
 
+
+  backend-ai-tests:
+    name: backend lint + AI copilot/chat tests
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend_v2
+    env:
+      APP_ENV: development
+      JWT_SECRET: ci-only-signing-key-${{ github.run_id }}-${{ github.run_attempt }}-not-a-secret
+      DO_INFERENCE_API_KEY: ""
+      GEMINI_API_KEY: ""
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install backend test dependencies
+        run: pip install -r requirements-dev.txt
+
+      - name: Ruff lint
+        run: ruff check .
+
+      # These tests mock external inference. They do not require API keys,
+      # raw portal CSVs, or paid DigitalOcean calls.
+      - name: Test Gemma Copilot and chatbot integration
+        run: pytest -q tests/test_ai_copilot.py tests/test_phase11_chat.py
 
   frontend-build:
     name: frontend build (House toggle compiles)
