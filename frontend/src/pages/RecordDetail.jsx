@@ -141,6 +141,7 @@ export default function RecordDetail() {
   // Investigation Copilot: null = status not known yet, so the button stays
   // available and the server remains the source of truth.
   const [aiConfigured, setAiConfigured] = useState(null);
+  const [aiAttribution, setAiAttribution] = useState(null);
   const [brief, setBrief] = useState(null);
   const [briefState, setBriefState] = useState('idle'); // idle | loading | success | error | unavailable
   const [briefErrorKind, setBriefErrorKind] = useState(null);
@@ -161,7 +162,12 @@ export default function RecordDetail() {
     // press Generate and the endpoint will answer 503 if it truly is off.
     let active = true;
     getAiStatus()
-      .then((s) => { if (active) setAiConfigured(!!s.configured); })
+      .then((s) => {
+        if (active) {
+          setAiConfigured(!!s.configured);
+          setAiAttribution(s.attribution || null);
+        }
+      })
       .catch(() => { if (active) setAiConfigured(null); });
     return () => { active = false; };
   }, []);
@@ -188,6 +194,7 @@ export default function RecordDetail() {
     try {
       const res = await generateInvestigationBrief(recordId);
       setBrief(res);
+      setAiAttribution(res.attribution || null);
       setBriefState('success');
     } catch (e) {
       if (e.status === 503) {
@@ -447,7 +454,7 @@ export default function RecordDetail() {
 
             <div className="copilot-attribution">
               <Sparkles size={11} />
-              <span>{t('rec.copilot.attribution')}</span>
+              <span>{brief?.attribution || aiAttribution || t('rec.copilot.attribution')}</span>
             </div>
           </div>
 
