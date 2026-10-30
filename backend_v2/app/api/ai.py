@@ -35,8 +35,6 @@ from .params import guarded, not_found
 
 router = APIRouter()
 
-BRIEF_ATTRIBUTION = "Powered by Google Gemma 4 · DigitalOcean Inference"
-
 BRIEF_SYSTEM_PROMPT = """You are the Investigation Copilot for MPLADS Sentinel, an investigation-support \
 platform for the Members of Parliament Local Area Development Scheme (MPLADS).
 
@@ -237,8 +235,9 @@ def ai_status(p: Principal = Depends(reader)):
     return {
         "configured": ai_provider.is_configured(),
         "provider": "gemma",
+        "inference_provider": ai_provider.get_provider(),
         "model": ai_provider.get_model(),
-        "attribution": BRIEF_ATTRIBUTION,
+        "attribution": ai_provider.get_attribution(),
     }
 
 
@@ -291,8 +290,9 @@ def investigation_brief(
     return {
         "record_id": record_id,
         "provider": "gemma",
+        "inference_provider": ai_provider.get_provider(),
         "model": ai_provider.get_model(),
-        "attribution": BRIEF_ATTRIBUTION,
+        "attribution": ai_provider.get_attribution(),
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "sections": sections,
     }
