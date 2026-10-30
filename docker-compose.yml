@@ -63,6 +63,9 @@ services:
       # Without DO_INFERENCE_API_KEY the Copilot is unavailable and the
       # chatbot falls back to its deterministic guide. Never commit a key.
       DO_INFERENCE_API_KEY: ${DO_INFERENCE_API_KEY:-}
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+      OPENROUTER_GEMMA_MODEL: ${OPENROUTER_GEMMA_MODEL:-google/gemma-4-31b-it:free}
+      OPENROUTER_BASE_URL: ${OPENROUTER_BASE_URL:-https://openrouter.ai/api/v1}
       DO_GEMMA_MODEL: ${DO_GEMMA_MODEL:-gemma-4-31B-it}
       DO_INFERENCE_BASE_URL: ${DO_INFERENCE_BASE_URL:-https://inference.do-ai.run/v1}
       DO_INFERENCE_TIMEOUT: ${DO_INFERENCE_TIMEOUT:-30}
