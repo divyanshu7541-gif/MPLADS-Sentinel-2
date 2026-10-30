@@ -6,9 +6,10 @@ endpoints, same request/response shapes, no `house` parameter added.
 Two layers, same design as backend/app/api/chat.py (preserved, not
 rewritten -- BLUEPRINT.md §11 "Copilot" / this phase's brief):
   1. A local, rule-based navigation guide, always available.
-  2. An optional Gemini layer for free-form questions when GEMINI_API_KEY
-     is configured, with a graceful fallback to the local guide on any
-     failure (never a broken chat).
+  2. An optional Gemma 4 layer (DigitalOcean Serverless Inference) for
+     free-form questions when DO_INFERENCE_API_KEY is configured, with an
+     optional Gemini fallback and a graceful fallback to the local guide on
+     any failure (never a broken chat).
 
 What Phase 11 actually changes:
   - The methodology portion of the system prompt is now GENERATED from the
@@ -43,6 +44,7 @@ from ..analytics import methodology
 from ..auth import ratelimit
 from ..auth.deps import Principal, reader
 from ..auth.scope import NATIONAL, Scope
+from ..core import ai_provider
 from ..core.chat_config import (
     get_fallback_models,
     get_gemini_api_key,
@@ -379,7 +381,31 @@ def _grounded_reply(work_key: str, stored: Optional[dict]) -> str:
     return f'Work "{work_key}": {risk_line} {house_note}{forecast_line}'
 
 
-# ---- Gemini layer (unchanged design from backend/app/api/chat.py) --------------------------------
+# ---- Gemma 4 (DigitalOcean) primary layer -------------------------------------------------------
+
+
+def _call_gemma(message: str, history: List[dict], system_prompt: str) -> Tuple[Optional[str], bool]:
+    """Try the DigitalOcean Gemma layer. Returns (reply, attempted); a missing
+    key is not an "attempt", so the caller can still use Gemini if configured
+    and can tell a configuration gap apart from a provider failure."""
+    if not ai_provider.is_configured():
+        return None, False
+    try:
+        reply = ai_provider.generate_text(
+            system_prompt,
+            message,
+            history=history,
+            temperature=0.4,
+            max_completion_tokens=500,
+        )
+    except ai_provider.ProviderNotConfigured:
+        return None, False
+    except (ai_provider.ProviderTimeout, ai_provider.ProviderError):
+        return None, True
+    return reply.strip() or None, True
+
+
+# ---- Gemini fallback layer (unchanged design from backend/app/api/chat.py) -----------------------
 
 
 @lru_cache(maxsize=4)
@@ -493,7 +519,13 @@ class ChatRequest(BaseModel):
 
 @router.get("/api/chat/status")
 async def chat_status():
-    return {"configured": is_ai_configured(), "provider": "gemini"}
+    # `provider` names the primary free-form layer. Gemini remains an
+    # optional fallback when present, so the deterministic guide is still
+    # the last resort either way.
+    return {
+        "configured": ai_provider.is_configured() or is_ai_configured(),
+        "provider": "gemma",
+    }
 
 
 @router.post("/api/chat")
@@ -523,7 +555,18 @@ def chat(request: Request, body: ChatRequest, db: Session = Depends(get_db), p: 
     system_prompt = f"{NAVIGATION_PROMPT}\n\n{methodology.render_methodology()}"
     # Phone and Aadhaar-shaped numbers are masked in everything sent to the model.
     history = [{"role": h.role, "content": mask_personal(h.content)} for h in body.history]
-    reply, ai_attempted = _call_gemini(mask_personal(message), history, system_prompt)
+    safe_message = mask_personal(message)
+
+    reply, gemma_attempted = _call_gemma(safe_message, history, system_prompt)
+    if reply:
+        return {"reply": reply, "source": "gemma"}
+
+    # Optional secondary provider. It is never asked to invent a score: the
+    # deterministic lookups above have already handled every record question.
+    reply, gemini_attempted = _call_gemini(safe_message, history, system_prompt)
     if reply:
         return {"reply": reply, "source": "gemini"}
-    return {"reply": _local_answer(message, ai_failed=ai_attempted), "source": "guide"}
+    return {
+        "reply": _local_answer(message, ai_failed=gemma_attempted or gemini_attempted),
+        "source": "guide",
+    }

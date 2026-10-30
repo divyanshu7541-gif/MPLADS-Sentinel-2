@@ -63,7 +63,7 @@ def test_render_methodology_states_house_neutrality_and_rs_has_no_constituency()
 def test_chat_status_shape(client):
     body = client.get("/api/chat/status").json()
     assert set(body.keys()) == {"configured", "provider"}
-    assert body["provider"] == "gemini"
+    assert body["provider"] == "gemma"
 
 
 def test_chat_shape(client):
@@ -89,7 +89,14 @@ def client_app_openapi():
 
 
 def test_local_guide_answers_navigation_questions_without_any_ai_key(client):
-    with patch("app.api.chat.get_gemini_api_key", return_value=""):
+    # Isolate the guide layer: the deterministic constituency/MP lookup is
+    # covered by its own tests and needs a served run in the database. A
+    # navigation question must still be answered by the guide when no AI
+    # key is configured and no lookup applies.
+    with (
+        patch("app.api.chat.get_gemini_api_key", return_value=""),
+        patch("app.api.chat.chat_lookup.answer", return_value=None),
+    ):
         r = client.post("/api/chat", json={"message": "how do I compare two MPs?", "history": []})
     body = r.json()
     assert body["source"] == "guide"

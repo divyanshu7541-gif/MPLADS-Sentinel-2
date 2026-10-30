@@ -13,5 +13,6 @@ scikit-learn==1.5.2  # Phase 4 near-duplicate signal: char n-gram TF-IDF cosine 
 lifelines==0.29.0  # Phase 7 A1 survival (Kaplan-Meier, Cox PH, concordance index)
 shapely==2.0.6  # Phase 9: representative points inside licensed polygons, geometry simplification
 pyarrow==21.0.0  # Phase 9: read the LGD districts GeoParquet
-google-genai==1.20.0  # Phase 11: optional Gemini layer for the chatbot; graceful fallback if unset/missing
+google-genai==1.20.0  # Phase 11: optional Gemini fallback for the chatbot; graceful fallback if unset/missing
+openai==1.75.0  # Gemma 4 via DigitalOcean Serverless Inference (OpenAI-compatible Chat Completions)
 PyJWT==2.9.0  # Phase 13: signed short-lived access tokens (HS256 JWT, OIDC-compatible claims)

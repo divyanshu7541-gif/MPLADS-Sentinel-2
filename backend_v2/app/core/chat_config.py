@@ -37,6 +37,10 @@ from typing import NamedTuple, Optional
 
 _REPO_ROOT = Path(__file__).resolve().parents[3]  # backend_v2/app/core -> repo root
 _ENV_FILE = _REPO_ROOT / ".env"
+# backend_v2/.env is the local (non-Docker) environment file for database and
+# deployment settings; the repo-root .env keeps the AI/provider settings. Read
+# both so either documented location works, with the repo-root file winning.
+_BACKEND_ENV_FILE = Path(__file__).resolve().parents[2] / ".env"
 
 
 def _parse_env_file(path: Path) -> dict:
@@ -60,7 +64,9 @@ def _parse_env_file(path: Path) -> dict:
 
 @lru_cache(maxsize=1)
 def _dotenv_values() -> dict:
-    return _parse_env_file(_ENV_FILE)
+    values = _parse_env_file(_BACKEND_ENV_FILE)
+    values.update(_parse_env_file(_ENV_FILE))  # repo-root .env takes precedence
+    return values
 
 
 def get_setting(name: str, default: str = "") -> str:

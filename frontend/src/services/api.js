@@ -187,6 +187,32 @@ export async function sendChatMessage(message, history = [], context = null) {
   return res.json();
 }
 
+// Gemma 4 Investigation Copilot (DigitalOcean Serverless Inference). The
+// response contains only an explanation of stored evidence; the deterministic
+// risk score on the page is never replaced by it.
+export async function getAiStatus() {
+  const res = await fetch(`${API_BASE}/ai/status`);
+  if (!res.ok) throw apiError(res, 'Failed to get AI status');
+  return res.json();
+}
+
+export async function generateInvestigationBrief(recordId) {
+  const res = await fetch(`${API_BASE}/ai/investigation-brief/${encodeURIComponent(recordId)}`, {
+    method: 'POST',
+  });
+  if (!res.ok) {
+    const err = apiError(res, 'Failed to generate the investigation brief');
+    try {
+      const body = await res.json();
+      if (body?.detail) err.detail = body.detail;
+    } catch {
+      // Non-JSON error body: the status code is enough.
+    }
+    throw err;
+  }
+  return res.json();
+}
+
 // ── New v2.0 endpoints ──────────────────────────────────────────
 
 export async function getGeoJSON() {

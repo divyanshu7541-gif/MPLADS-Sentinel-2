@@ -16,8 +16,8 @@
 #   docker compose -f docker-compose.deploy.yml --env-file ops/deploy/deploy.env up -d
 #
 # ops/deploy/deploy.env is git-ignored (*.env rule) and holds the secrets
-# (JWT_SECRET, DATABASE_URL, later GEMINI_API_KEY); template:
-# ops/deploy/deploy.env.example.
+# (JWT_SECRET, DATABASE_URL, DO_INFERENCE_API_KEY, optional GEMINI_API_KEY);
+# template: ops/deploy/deploy.env.example.
 
 name: sentinel-deploy
 
@@ -48,6 +48,13 @@ services:
       DB_POOL_SIZE: "5"
       DB_MAX_OVERFLOW: "10"
       GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      # Google Gemma 4 through DigitalOcean Serverless Inference. Optional:
+      # without a key the Copilot reports "unavailable" and the chatbot falls
+      # back to its deterministic guide. The key stays server-side only.
+      DO_INFERENCE_API_KEY: ${DO_INFERENCE_API_KEY:-}
+      DO_GEMMA_MODEL: ${DO_GEMMA_MODEL:-gemma-4-31B-it}
+      DO_INFERENCE_BASE_URL: ${DO_INFERENCE_BASE_URL:-https://inference.do-ai.run/v1}
+      DO_INFERENCE_TIMEOUT: ${DO_INFERENCE_TIMEOUT:-30}
     extra_hosts:
       - "host.docker.internal:host-gateway"
     networks:

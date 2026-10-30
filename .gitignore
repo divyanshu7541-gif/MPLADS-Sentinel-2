@@ -32,7 +32,6 @@ e2e-logs/
 
 .vscode/
 
-data/
 data/processed/
 
 # Fetched geo boundary source files (large binaries; re-fetched by
@@ -40,4 +39,3 @@ data/processed/
 # backend_v2/app/ingest/geo_load.py for provenance/licence).
 backend_v2/app/geo_data_src/
 ci-artifacts/
-.DS_Store

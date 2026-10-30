@@ -296,7 +296,7 @@ def test_every_frontend_api_call_has_a_route():
     """Old system: the frontend called endpoints the backend didn't have,
     and the chatbot route had been deleted."""
     calls = _api_js_calls()
-    assert len(calls) == 32, calls
+    assert len(calls) == 35, calls
     missing = [(m, p) for m, p in calls if _match(m, p) is None]
     assert not missing, missing
 

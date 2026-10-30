@@ -121,6 +121,7 @@ def limit(bucket: str, request: Request, *extra_keys: str) -> None:
     per_minute = {
         "login": s.rate_limit_login_per_minute,
         "chat": s.rate_limit_chat_per_minute,
+        "ai_brief": s.rate_limit_ai_brief_per_minute,
         "search": s.rate_limit_search_per_minute,
     }[bucket]
     LIMITER.hit(bucket, f"ip:{client_key(request)}", per_minute)

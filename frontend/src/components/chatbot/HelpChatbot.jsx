@@ -72,7 +72,7 @@ export default function HelpChatbot() {
         suggestions: Array.isArray(res.suggestions) ? res.suggestions : [],
       }]);
       setPendingContext(res.context || null);
-      if (res.source === 'gemini') setConfigured(true);
+      if (res.source === 'gemma' || res.source === 'gemini') setConfigured(true);
     } catch (e) {
       setMessages((prev) => [...prev, { role: 'assistant', kind: 'error' }]);
     } finally {

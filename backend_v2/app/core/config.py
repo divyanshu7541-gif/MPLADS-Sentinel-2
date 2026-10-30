@@ -68,6 +68,7 @@ class Settings(BaseSettings):
     # hard global limit needs a shared store (docs/security.md).
     rate_limit_login_per_minute: int = 10
     rate_limit_chat_per_minute: int = 30
+    rate_limit_ai_brief_per_minute: int = 10
     rate_limit_search_per_minute: int = 300
     # Phase 14: the reverse proxy(ies) in front of the API (e.g. the cloudflared
     # container), comma-separated IPs or CIDRs. Forwarded client-IP headers

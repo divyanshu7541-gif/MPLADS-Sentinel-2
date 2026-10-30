@@ -13,13 +13,14 @@ def client() -> TestClient:
 
 @pytest.fixture(autouse=True)
 def _no_live_llm_and_fresh_rate_limits(monkeypatch):
-    """No test ever calls the real Gemini API (a developer's repo-root .env
-    may hold a key -- app/core/chat_config.py); tests that exercise the AI
-    layer patch it themselves. Rate-limit windows start empty per test, so
-    one test's requests never count against another's."""
+    """No test ever calls a real AI provider (a developer's repo-root or
+    backend_v2/.env may hold a key -- app/core/chat_config.py); tests that
+    exercise an AI layer patch it themselves. Rate-limit windows start empty
+    per test, so one test's requests never count against another's."""
     from app.auth.ratelimit import LIMITER
 
     monkeypatch.setattr("app.api.chat.get_gemini_api_key", lambda: "")
+    monkeypatch.setattr("app.core.ai_provider.get_api_key", lambda: "")
     LIMITER.reset()
     yield
     LIMITER.reset()

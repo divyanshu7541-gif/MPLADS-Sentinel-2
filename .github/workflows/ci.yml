@@ -1,0 +1,232 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  # Phase 13: the ENTIRE accumulated regression suite (Phases 0-13) runs in
+  # this one job, against one real-data database built by the full pipeline:
+  # lint, every pytest suite (contract, known-defect, security checklist,
+  # claims discipline, audit sample), the executed backup/restore test, and
+  # the House-toggle browser e2e against the real-data API (inside pytest).
+  regression:
+    name: full regression suite, Phases 0-13 (one job)
+    runs-on: ubuntu-latest
+    timeout-minutes: 150
+    defaults:
+      run:
+        working-directory: backend_v2
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: sentinel
+          POSTGRES_PASSWORD: sentinel
+          POSTGRES_DB: sentinel
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U sentinel -d sentinel"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql+psycopg://sentinel:sentinel@localhost:5432/sentinel
+      DATA_DIR: ${{ github.workspace }}/data
+      # a CI-only signing key (tokens die with the job); never a real secret
+      JWT_SECRET: ci-only-signing-key-${{ github.run_id }}-${{ github.run_attempt }}-not-a-secret
+      # the pre-Vercel pool (5 + 10); the code default (2 + 0) is sized for Vercel instances
+      DB_POOL_SIZE: "5"
+      DB_MAX_OVERFLOW: "10"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # full history, so the secret scan covers every commit
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      # Fails the job if a credential appears in any tracked file or in any
+      # commit of the history. Prints file/line/pattern only, never a value.
+      - name: Secret scan (tracked files + full git history)
+        working-directory: .
+        run: python ops/ci/secret_scan.py --history
+
+      - name: Install dependencies
+        run: pip install -r requirements-dev.txt
+
+      - name: Lint (ruff)
+        run: ruff check .
+
+      - name: Fetch geo boundary data (Phase 1 states/national; Phase 9 constituencies + districts, sha256-pinned)
+        run: bash scripts/fetch_geo_data.sh
+
+      - name: Apply migrations
+        run: alembic upgrade head
+
+      - name: Run Phase 1 ingest (P0-P2, reference + geo load)
+        run: python scripts/run_ingest.py
+
+      - name: Upload reconciliation report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: phase1-reconciliation-report
+          path: docs/phase1_reconciliation_report.md
+
+      - name: Run Phase 2 normalize (P3-P5)
+        run: python scripts/run_normalize.py
+
+      - name: Upload normalization report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: phase2-normalization-report
+          path: docs/phase2_normalization_report.md
+
+      - name: Run Phase 5a identity split (portal IDs shared across Houses -> House-qualified works)
+        run: python scripts/run_identity_split.py
+
+      - name: Run Phase 3 peer context (P6 peer groups + leave-one-out baselines)
+        run: python scripts/run_context.py
+
+      - name: Upload coverage report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: phase3-coverage-report
+          path: docs/phase3_coverage_report.md
+
+      - name: Run Phase 4 base signals (six BASE signals on Phase 3's peer engine)
+        run: python scripts/run_signals.py
+
+      - name: Upload signals report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: phase4-signals-report
+          path: docs/phase4_signals_report.md
+
+      # Phase 5 writes its freshly computed gate report to a CI-only path so
+      # the COMMITTED docs/phase5_gate_report.md stays what the gate test
+      # checks: changing the fusion config without regenerating and
+      # committing a gate report fails test_every_run_with_risk_results_...
+      - name: Run Phase 5 risk fusion (both configs) + confidence + compliance C1-C9
+        env:
+          PHASE5_GATE_REPORT_PATH: ${{ github.workspace }}/ci-artifacts/phase5_gate_report.md
+        run: python scripts/run_risk.py
+
+      - name: Upload CI-computed gate report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: phase5-gate-report-ci
+          path: ci-artifacts/phase5_gate_report.md
+
+      - name: Publish default config (published_run -> latest run, v4-candidate)
+        run: python scripts/publish_run.py
+
+      - name: Run Phase 6 B4 atypicality evidence layer (never enters risk)
+        env:
+          PHASE6_REPORT_PATH: ${{ github.workspace }}/ci-artifacts/phase6_atypicality_report.md
+        run: python scripts/run_atypicality.py
+
+      - name: Upload atypicality report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: phase6-atypicality-report
+          path: ci-artifacts/phase6_atypicality_report.md
+
+      - name: Run Phase 9 geo/map build (boundaries, work locations, map tables for the published run)
+        run: python scripts/run_geo.py
+
+      - name: Run Phase 10/11 entity/graph build (payee retyping, entity_metric, offline graph, published run)
+        run: python scripts/run_entities.py
+
+      - name: Run Phase 12 serving build (served_work read model behind every cutover endpoint, published run)
+        run: python scripts/run_serving.py
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install frontend + Playwright (the browser e2e runs inside the pytest step)
+        run: |
+          (cd ../frontend && npm ci --no-audit --no-fund)
+          pip install playwright==1.47.0
+          python -m playwright install --with-deps chromium
+
+      # Every suite in ONE pytest run, including the House-toggle browser e2e:
+      # tests/e2e/conftest.py starts the API (:8000) and the Vite dev server
+      # (:3000) against this same real-data database. E2E_REQUIRED=1 makes a
+      # missing browser prerequisite a failure, never a skip.
+      - name: "Test (pytest: every suite, Phases 0-13 -- contract, known-defect, security, claims, audit sample, redaction, browser e2e)"
+        env:
+          E2E_REQUIRED: "1"
+          E2E_SCREENSHOT_DIR: ${{ github.workspace }}/e2e-logs/screenshots
+          E2E_LOG_DIR: ${{ github.workspace }}/e2e-logs
+        run: pytest -v -rxs --junitxml=../ci-artifacts/junit.xml
+
+      # Only the listed tests may skip (ops/ci/assert_skips.py: exactly one, in Phase 11).
+      - name: Assert the exact expected skips
+        if: always()
+        working-directory: .
+        run: python ops/ci/assert_skips.py ci-artifacts/junit.xml
+
+      - name: Upload e2e logs + screenshots + junit
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pytest-and-frontend-e2e
+          path: |
+            e2e-logs/
+            ci-artifacts/junit.xml
+
+      - name: Executed restore test (backup with the scheduled job's script, restore into a fresh PostgreSQL 16, verify, API suites on the copy)
+        env:
+          PGHOST: localhost
+          PGPORT: "5432"
+          PGUSER: sentinel
+          PGPASSWORD: sentinel
+          PGDATABASE: sentinel
+          PYRUN: local
+          # no EXPECT_CHECKSUM here: CI builds its own database from scratch, whose md5 differs from
+          # the pinned local reference in float last bits only (docs/performance_report.md); the
+          # restore test compares source vs restored, which is what it must prove.
+        run: bash ../ops/backup/restore_test.sh
+
+      - name: Upload restore test report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: restore-test
+          path: |
+            docs/restore_test_report.md
+            ci-artifacts/restore-test/*.log
+            ci-artifacts/restore-test/*.json
+
+
+  frontend-build:
+    name: frontend build (House toggle compiles)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - run: npm ci --no-audit --no-fund
+      - run: npx vite build
+
+  compose-config:
+    name: validate docker-compose.yml
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: docker compose config
+        run: docker compose config --quiet

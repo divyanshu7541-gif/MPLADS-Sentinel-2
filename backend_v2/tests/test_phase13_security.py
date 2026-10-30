@@ -591,6 +591,8 @@ def _committed_files():
     ignored_dirs = {
         "node_modules",
         ".git",
+        ".venv",
+        "venv",
         "__pycache__",
         ".ruff_cache",
         ".pytest_cache",

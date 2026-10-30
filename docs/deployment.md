@@ -23,8 +23,12 @@ Names, and where each is set, are in `DEPLOY_NOTES.md`. Values are never written
 - **Required, set in the Vercel project:** `JWT_SECRET`, `DATABASE_URL`, `CORS_ORIGINS`.
 - **Pinned in `backend_v2/Dockerfile.vercel`** (not set in the dashboard): `APP_ENV`, `TRUST_PROXY_HEADERS`.
 - **Never set on Vercel:** `WARM_CACHE`.
-- **Optional:** `DB_POOL_SIZE`, `DB_MAX_OVERFLOW`, `DB_POOL_RECYCLE`.
+- **Optional:** `DB_POOL_SIZE`, `DB_MAX_OVERFLOW`, `DB_POOL_RECYCLE`, `GEMINI_API_KEY`, `DO_INFERENCE_API_KEY`, `DO_GEMMA_MODEL`, `DO_INFERENCE_BASE_URL`, `DO_INFERENCE_TIMEOUT`.
 - **Post-deploy gate only, not the service:** `GATE_SLIM`.
+
+### AI provider (Gemma 4 on DigitalOcean)
+
+The Investigation Copilot and the chatbot's free-form answers use Google Gemma 4 through DigitalOcean Serverless Inference. The backend calls DigitalOcean's OpenAI-compatible endpoint (`https://inference.do-ai.run/v1/chat/completions`) with a server-side bearer key; the browser never receives the key. Configuration is read from the process environment first, then the repo-root `.env`, then `backend_v2/.env`. Without `DO_INFERENCE_API_KEY` the API still starts: `GET /api/ai/status` reports `configured: false`, the Copilot shows its unavailable state, and the chatbot uses deterministic lookups and its local guide. The model never calculates, changes or replaces a risk score; it only explains stored evidence. Prompts contain a minimal, masked evidence pack (no credentials, case notes, user identifiers or raw source rows). Timeouts map to HTTP 504, provider failures to 502, and missing configuration to 503.
 
 `VITE_*` variables are compiled into the public JavaScript bundle, so never put a key in one (`frontend/.env.example`).
 

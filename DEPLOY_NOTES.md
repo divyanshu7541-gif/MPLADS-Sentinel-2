@@ -28,7 +28,11 @@ The container refuses to start without these, because `APP_ENV` is pinned to pro
 
 ## Optional
 
-- `GEMINI_API_KEY` — the copilot's free-form answers (`app/core/chat_config.py`); without it the copilot falls back to its local rule-based guide (`app/api/chat.py`). Set it in the Vercel project, never in the repo, and rotate the key before deploying.
+- `DO_INFERENCE_API_KEY` — the **primary** AI key: Google Gemma 4 through DigitalOcean Serverless Inference (`app/core/ai_provider.py`). It powers the Investigation Copilot on the record page and the chatbot's free-form layer. Without it the Copilot shows "not configured" and the chatbot falls back to its local guide. Set it in the Vercel project, never in the repo, and rotate the key before deploying.
+- `DO_GEMMA_MODEL` — model id, default `gemma-4-31B-it`.
+- `DO_INFERENCE_BASE_URL` — OpenAI-compatible base URL, default `https://inference.do-ai.run/v1` (include `/v1`; the SDK appends `/chat/completions`).
+- `DO_INFERENCE_TIMEOUT` — per-request timeout in seconds (5–120, default 30). Timeouts return HTTP 504 without touching stored scores.
+- `GEMINI_API_KEY` — optional secondary fallback for the chatbot only (`app/core/chat_config.py`); without it the chatbot goes straight from Gemma to its local rule-based guide (`app/api/chat.py`). Set it in the Vercel project, never in the repo, and rotate the key before deploying.
 - `ANONYMOUS_READ` — read-only `public` role for callers with no token (`app/core/config.py`, code default `true`). The frontend sends no token, so `false` takes the public site down.
 - `DB_POOL_SIZE` — connections per instance (code default 2).
 - `DB_MAX_OVERFLOW` — extra connections per instance above the pool (code default 0).
@@ -37,6 +41,10 @@ The container refuses to start without these, because `APP_ENV` is pinned to pro
 
 ## Verify once on a preview
 
+- [ ] **Copilot without a key.** With `DO_INFERENCE_API_KEY` unset, open any record: the Copilot card says it is not configured; the rest of the record, its stored score and every other page work unchanged. `GET /api/ai/status` returns `configured: false` without leaking a key.
+- [ ] **Copilot with a key.** Set the key, restart, open a record and click **Generate Investigation Brief**: the five sections render in order, the attribution line shows *Powered by Google Gemma 4 · DigitalOcean Inference*, and the risk score/tier/confidence above are byte-for-byte the same before and after.
+- [ ] **Chatbot order.** Ask "how do I compare two MPs?" (deterministic lookup or guide), then a free-form methodology question (Gemma 4 source label). With the key unset, the same free-form question falls back to the local guide and the page still works.
+- [ ] **Provider failure.** Block `inference.do-ai.run` in DevTools or use an invalid key: the Copilot shows the error state and the stored assessment stays on screen; the API returns 502/504/503, never a fabricated brief.
 - [ ] **Client IP is the right-most `X-Forwarded-For` entry and is the real client.** From one network, send failed logins to `/api/auth/login`, each with a different username, until one answers 429. A second network must still get 401, not 429; if it gets 429, Vercel appends an internal hop after the client and every user shares one bucket. Then repeat from the first network with a different made-up `X-Forwarded-For` value on each request: it must still reach 429; if it never does, the header is client-controlled.
 - [ ] **SPA refresh on `/map`.** Open `/map` directly and reload. The app must render, not a 404.
 - [ ] **Map work markers draw (8a55218).** On `/map`, pick a constituency: a coloured cluster bubble must appear on it, not only the "N work markers shown" pill. In local dev, also save any frontend file (hot reload) and pick again: the bubble must still appear.

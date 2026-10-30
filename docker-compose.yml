@@ -59,6 +59,13 @@ services:
       JWT_SECRET: ${JWT_SECRET:-}
       ANONYMOUS_READ: ${ANONYMOUS_READ:-true}
       CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000,http://localhost:4173}
+      # Optional AI: Google Gemma 4 via DigitalOcean Serverless Inference.
+      # Without DO_INFERENCE_API_KEY the Copilot is unavailable and the
+      # chatbot falls back to its deterministic guide. Never commit a key.
+      DO_INFERENCE_API_KEY: ${DO_INFERENCE_API_KEY:-}
+      DO_GEMMA_MODEL: ${DO_GEMMA_MODEL:-gemma-4-31B-it}
+      DO_INFERENCE_BASE_URL: ${DO_INFERENCE_BASE_URL:-https://inference.do-ai.run/v1}
+      DO_INFERENCE_TIMEOUT: ${DO_INFERENCE_TIMEOUT:-30}
     ports:
       - "8000:8000"  # Phase 12 cutover: the frontend proxy's target (was 8001)
     depends_on:

@@ -1,8 +1,14 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, AlertTriangle, Link2, FileText, ChevronRight, Shield, RefreshCw } from 'lucide-react';
+import { ArrowLeft, AlertTriangle, Link2, FileText, ChevronRight, Shield, RefreshCw, Sparkles, Loader2 } from 'lucide-react';
 import { RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, Radar, ResponsiveContainer, Tooltip } from 'recharts';
-import { getRecordDetail, recalculateRisk, isNotFound } from '../services/api';
+import {
+  getRecordDetail,
+  recalculateRisk,
+  isNotFound,
+  getAiStatus,
+  generateInvestigationBrief,
+} from '../services/api';
 import RiskBadge from '../components/RiskBadge';
 import StageBadge from '../components/StageBadge';
 import LoadingState from '../components/LoadingState';
@@ -132,6 +138,12 @@ export default function RecordDetail() {
   const [recalculating, setRecalculating] = useState(false);
   const [error, setError] = useState(null);
   const [recalcError, setRecalcError] = useState(null);
+  // Investigation Copilot: null = status not known yet, so the button stays
+  // available and the server remains the source of truth.
+  const [aiConfigured, setAiConfigured] = useState(null);
+  const [brief, setBrief] = useState(null);
+  const [briefState, setBriefState] = useState('idle'); // idle | loading | success | error | unavailable
+  const [briefErrorKind, setBriefErrorKind] = useState(null);
 
   const load = useCallback(() => {
     setLoading(true);
@@ -143,6 +155,60 @@ export default function RecordDetail() {
   }, [recordId]);
 
   useEffect(() => { load(); }, [load]);
+
+  useEffect(() => {
+    // A failed status call is "unknown", not "unavailable": the user can still
+    // press Generate and the endpoint will answer 503 if it truly is off.
+    let active = true;
+    getAiStatus()
+      .then((s) => { if (active) setAiConfigured(!!s.configured); })
+      .catch(() => { if (active) setAiConfigured(null); });
+    return () => { active = false; };
+  }, []);
+
+  useEffect(() => {
+    // A brief belongs to one record; never carry it across a navigation.
+    setBrief(null);
+    setBriefState('idle');
+    setBriefErrorKind(null);
+  }, [recordId]);
+
+  useEffect(() => {
+    // Status may resolve after a brief was already generated: only the idle
+    // state changes, so a successful brief is never wiped by a slow status call.
+    if (aiConfigured === false) {
+      setBriefState((prev) => (prev === 'idle' ? 'unavailable' : prev));
+    }
+  }, [aiConfigured]);
+
+  const handleGenerateBrief = async () => {
+    if (briefState === 'loading') return;
+    setBriefState('loading');
+    setBriefErrorKind(null);
+    try {
+      const res = await generateInvestigationBrief(recordId);
+      setBrief(res);
+      setBriefState('success');
+    } catch (e) {
+      if (e.status === 503) {
+        setAiConfigured(false);
+        setBriefState('unavailable');
+      } else if (e.status === 504) {
+        setBriefErrorKind('timeout');
+        setBriefState('error');
+      } else if (e.status === 502) {
+        setBriefErrorKind(
+          typeof e.detail === 'string' && e.detail.includes('failed validation')
+            ? 'validation'
+            : 'generic'
+        );
+        setBriefState('error');
+      } else {
+        setBriefErrorKind('generic');
+        setBriefState('error');
+      }
+    }
+  };
 
   const handleRecalculate = async () => {
     setRecalculating(true);
@@ -296,6 +362,94 @@ export default function RecordDetail() {
               </p>
             </div>
           )}
+
+          {/* Gemma 4 Investigation Copilot. The brief is explanatory only:
+              the deterministic score and evidence above remain authoritative
+              and are never replaced by this card. */}
+          <div className="card copilot-card" style={{ marginBottom: 16 }} data-testid="investigation-copilot">
+            <div className="copilot-head">
+              <div className="copilot-icon"><Sparkles size={17} /></div>
+              <div className="copilot-head-copy">
+                <h3>{t('rec.copilot.title')}</h3>
+                <p>{t('rec.copilot.subtitle')}</p>
+              </div>
+              <span className="copilot-badge">{t('rec.copilot.badge')}</span>
+            </div>
+            <p className="copilot-disclaimer">{t('rec.copilot.disclaimer')}</p>
+
+            {briefState === 'unavailable' && (
+              <div className="copilot-state copilot-unavailable" role="status">
+                <AlertTriangle size={15} />
+                <span>{t('rec.copilot.unavailable')}</span>
+              </div>
+            )}
+
+            {briefState === 'loading' && (
+              <div className="copilot-state" role="status" aria-live="polite">
+                <Loader2 size={16} className="spinning" />
+                <span>{t('rec.copilot.generating')}</span>
+              </div>
+            )}
+
+            {briefState === 'error' && (
+              <div className="copilot-error" role="alert">
+                <div className="copilot-state">
+                  <AlertTriangle size={15} />
+                  <span>
+                    {briefErrorKind === 'timeout'
+                      ? t('rec.copilot.timeout')
+                      : briefErrorKind === 'validation'
+                        ? t('rec.copilot.validation')
+                        : t('rec.copilot.error')}
+                  </span>
+                </div>
+                <button className="btn btn-outline" onClick={handleGenerateBrief} style={{ marginTop: 10 }}>
+                  <RefreshCw size={14} />
+                  {t('rec.copilot.tryAgain')}
+                </button>
+              </div>
+            )}
+
+            {briefState === 'idle' && (
+              <button className="btn btn-primary copilot-generate" onClick={handleGenerateBrief}>
+                <Sparkles size={14} />
+                {t('rec.copilot.generate')}
+              </button>
+            )}
+
+            {briefState === 'success' && brief && (
+              <div className="copilot-brief">
+                {brief.sections?.map((section) => (
+                  <section key={section.key} className="copilot-section">
+                    <h4>{section.title}</h4>
+                    {section.items?.length > 0 ? (
+                      <ul>
+                        {section.items.map((item, i) => <li key={i}>{item}</li>)}
+                      </ul>
+                    ) : (
+                      <p style={{ whiteSpace: 'pre-line' }}>{section.body}</p>
+                    )}
+                  </section>
+                ))}
+                <div className="copilot-success-footer">
+                  <span>
+                    {brief.generated_at
+                      ? t('rec.copilot.generated', { time: new Date(brief.generated_at).toLocaleString() })
+                      : null}
+                  </span>
+                  <button className="btn btn-outline" onClick={handleGenerateBrief}>
+                    <RefreshCw size={14} />
+                    {t('rec.copilot.regenerate')}
+                  </button>
+                </div>
+              </div>
+            )}
+
+            <div className="copilot-attribution">
+              <Sparkles size={11} />
+              <span>{t('rec.copilot.attribution')}</span>
+            </div>
+          </div>
 
           {/* Tabs */}
           <div className="tabs">
